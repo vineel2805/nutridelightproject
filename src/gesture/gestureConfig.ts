@@ -5,7 +5,7 @@
 
 export const GESTURE_CONFIG = {
   /** Target inference frequency (Hz) */
-  INFERENCE_FPS: 12,
+  INFERENCE_FPS: 18,
 
   /** Legacy confidence threshold used by compatibility helpers */
   CONFIDENCE_THRESHOLD: 0.66,
@@ -17,7 +17,7 @@ export const GESTURE_CONFIG = {
   CLASSIFIER_MIN_MARGIN: 0.08,
 
   /** Number of recent predictions used for temporal consensus */
-  BUFFER_SIZE: 5,
+  BUFFER_SIZE: 3,
 
   /** Legacy majority threshold used by compatibility helpers */
   MIN_VOTE_RATIO: 0.66,
@@ -25,15 +25,18 @@ export const GESTURE_CONFIG = {
   /**
    * Minimum weighted evidence required for a stable lock.
    */
-  MIN_WEIGHTED_SCORE: 0.66,
+  MIN_WEIGHTED_SCORE: 0.6,
 
   /**
    * How much stronger the best gesture must be than the runner-up.
    */
-  MIN_WEIGHTED_MARGIN: 0.08,
+  MIN_WEIGHTED_MARGIN: 0.06,
 
   /** How many consecutive matching frames are required before lock */
-  MIN_CONSECUTIVE: 3,
+  MIN_CONSECUTIVE: 2,
+
+  /** Confidence threshold for immediate capture lock on obvious poses */
+  CAPTURE_FAST_CONFIDENCE: 0.9,
 
   /**
    * Motion hysteresis thresholds in normalized image space.

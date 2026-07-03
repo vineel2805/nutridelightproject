@@ -226,6 +226,39 @@ export function useGestureDetection({
 
       const classification = classifyNormalizedHand(normalized);
 
+      if (
+        phase === 'capture' &&
+        !motionState.moving &&
+        classification.move &&
+        classification.confidence >= GESTURE_CONFIG.CAPTURE_FAST_CONFIDENCE
+      ) {
+        stableBufferRef.current.reset();
+        const fastStatus: GestureStatus = {
+          kind: 'stable',
+          move: classification.move,
+          confidence: classification.confidence,
+        };
+
+        emitGestureStatus(fastStatus);
+        onStableRef.current?.(classification.move);
+
+        if (import.meta.env.DEV) {
+          setDebugInfo({
+            label: classification.move,
+            confidence: classification.confidence,
+            voteRatio: 1,
+            weightedMargin: 1,
+            consecutiveCount: 1,
+            motion: motionState.motion,
+            status: fastStatus,
+            serviceStatus: gestureService.getStatus(),
+            rejectionReason: classification.rejectionReason,
+          });
+        }
+
+        return;
+      }
+
       if (motionState.moving) {
         stableBufferRef.current.push(null);
       } else if (classification.move) {
