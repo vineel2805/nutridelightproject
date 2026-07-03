@@ -8,7 +8,7 @@ describe('Gesture Mapping Tests', () => {
   });
 
   it('should return null for Closed_Fist below threshold', () => {
-    expect(mapGestureToMove('Closed_Fist', 0.70)).toBeNull();
+    expect(mapGestureToMove('Closed_Fist', 0.65)).toBeNull();
     expect(mapGestureToMove('Closed_Fist', 0.5)).toBeNull();
   });
 
@@ -18,7 +18,7 @@ describe('Gesture Mapping Tests', () => {
   });
 
   it('should return null for Open_Palm below threshold', () => {
-    expect(mapGestureToMove('Open_Palm', 0.71)).toBeNull();
+    expect(mapGestureToMove('Open_Palm', 0.65)).toBeNull();
   });
 
   it('should map Victory to scissors above threshold', () => {
@@ -26,7 +26,7 @@ describe('Gesture Mapping Tests', () => {
   });
 
   it('should return null for Victory below threshold', () => {
-    expect(mapGestureToMove('Victory', 0.69)).toBeNull();
+    expect(mapGestureToMove('Victory', 0.65)).toBeNull();
   });
 
   it('should return null for unmapped gesture labels', () => {

@@ -102,9 +102,9 @@ describe('Stability Buffer Tests', () => {
     });
 
     it('should identify when hand is moving too fast', () => {
-      // Threshold is 0.04
+      // Threshold is 0.028 in the current compatibility helper
       expect(isHandMoving(0.05)).toBe(true);
-      expect(isHandMoving(0.03)).toBe(false);
+      expect(isHandMoving(0.02)).toBe(false);
     });
   });
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCamera } from '../camera/useCamera';
 import { useGestureDetection } from '../gesture/useGestureDetection';
 import { CameraView } from '../components/CameraView';
@@ -13,8 +13,14 @@ interface GestureLabProps {
  * Never shown in production navigation.
  */
 export const GestureLab: React.FC<GestureLabProps> = ({ onExit }) => {
-  const { videoRef, status, startCamera } = useCamera();
+  const { videoRef, status, startCamera, stopCamera } = useCamera();
   const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, [stopCamera]);
 
   const { gestureStatus, debugInfo, serviceReady } = useGestureDetection({
     videoRef,

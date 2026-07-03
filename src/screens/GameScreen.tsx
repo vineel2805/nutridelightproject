@@ -55,28 +55,58 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   onBack,
 }) => {
   const [state, dispatch] = useReducer(gameReducer, INITIAL_STATE);
-  const { videoRef, status: cameraStatus, errorMessage: cameraError, startCamera } = useCamera();
+  const {
+    videoRef,
+    errorMessage: cameraError,
+    startCamera,
+    stopCamera,
+  } = useCamera();
 
   const captureLockedRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cameraStartAttemptRef = useRef(false);
 
-  // ─── Start camera on mount ───
+  // ─── Initialize camera flow ───
   useEffect(() => {
     AudioManager.preload();
     dispatch({ type: 'START_CAMERA' });
-    startCamera().then(() => {
-      dispatch({ type: 'CAMERA_READY' });
-    }).catch((err) => {
-      dispatch({ type: 'CAMERA_ERROR', payload: err?.message ?? 'Camera error' });
-    });
 
     return () => {
       clearTimeout(timerRef.current!);
       clearInterval(countdownTickRef.current!);
+      stopCamera();
+      cameraStartAttemptRef.current = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopCamera]);
+
+  useEffect(() => {
+    if (state.phase !== 'cameraSetup') {
+      cameraStartAttemptRef.current = false;
+      return;
+    }
+
+    if (cameraStartAttemptRef.current) return;
+    cameraStartAttemptRef.current = true;
+
+    let cancelled = false;
+
+    startCamera()
+      .then(() => {
+        if (!cancelled) {
+          dispatch({ type: 'CAMERA_READY' });
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          dispatch({ type: 'CAMERA_ERROR', payload: err?.message ?? 'Camera error' });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [state.phase, startCamera]);
 
   // ─── Gesture detection ───
   const handleStableGesture = useCallback((move: RpsMove) => {
@@ -94,28 +124,34 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   // ─── Detection prompt from gesture status ───
   useEffect(() => {
     if (state.phase === 'waitingForStart' || state.phase === 'roundReady') {
-      if (gestureStatus.kind === 'noHand') {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '🖐 Show your hand' });
-      } else if (gestureStatus.kind === 'moving') {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '✋ Hold your hand steady' });
-      } else if (gestureStatus.kind === 'stable') {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '✅ Hand detected — ready!' });
-      } else if (!serviceReady) {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '⏳ Loading gesture model...' });
-      } else {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: null });
+      const nextPrompt =
+        gestureStatus.kind === 'noHand'
+          ? '🖐 Show your hand'
+          : gestureStatus.kind === 'moving'
+            ? '✋ Hold your hand steady'
+            : gestureStatus.kind === 'stable'
+              ? '✅ Hand detected — ready!'
+              : !serviceReady
+                ? '⏳ Loading gesture model...'
+                : null;
+
+      if (state.detectionPrompt !== nextPrompt) {
+        dispatch({ type: 'SET_DETECTION_PROMPT', payload: nextPrompt });
       }
     }
     if (state.phase === 'capture') {
-      if (gestureStatus.kind === 'noHand') {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '🖐 Show your move!' });
-      } else if (gestureStatus.kind === 'moving') {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: '✋ Hold steady!' });
-      } else {
-        dispatch({ type: 'SET_DETECTION_PROMPT', payload: null });
+      const nextPrompt =
+        gestureStatus.kind === 'noHand'
+          ? '🖐 Show your move!'
+          : gestureStatus.kind === 'moving'
+            ? '✋ Hold steady!'
+            : null;
+
+      if (state.detectionPrompt !== nextPrompt) {
+        dispatch({ type: 'SET_DETECTION_PROMPT', payload: nextPrompt });
       }
     }
-  }, [gestureStatus, state.phase, serviceReady]);
+  }, [gestureStatus, serviceReady, state.detectionPrompt, state.phase]);
 
   // ─── Phase transitions via game logic timers ───
   useEffect(() => {
@@ -241,14 +277,13 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         : state.detectionPrompt;
 
   // ─── Camera error state ───
-  if (state.phase === 'error' || cameraStatus === 'error') {
+  if (state.phase === 'error') {
     return (
       <CameraError
         message={state.errorMessage ?? cameraError ?? 'Camera could not be started.'}
         onRetry={() => {
           dispatch({ type: 'DISMISS_ERROR' });
           dispatch({ type: 'START_CAMERA' });
-          startCamera().then(() => dispatch({ type: 'CAMERA_READY' }));
         }}
         onBack={onBack}
       />

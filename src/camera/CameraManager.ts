@@ -3,9 +3,12 @@
 // ============================================================
 
 export type CameraError =
+  | 'unsupported'
   | 'permission-denied'
   | 'not-found'
   | 'overconstrained'
+  | 'not-readable'
+  | 'play-failed'
   | 'unknown';
 
 export interface CameraManagerOptions {
@@ -21,17 +24,36 @@ class CameraManagerClass {
     videoEl: HTMLVideoElement,
     options: CameraManagerOptions = {}
   ): Promise<void> {
-    const { width = 1280, height = 720, facingMode = 'user' } = options;
+    const {
+      width = 960,
+      height = 540,
+      facingMode = 'user',
+    } = options;
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw this.classifyError(
+        new DOMException(
+          'This browser does not support camera access.',
+          'NotSupportedError'
+        )
+      );
+    }
 
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
-        video: { width, height, facingMode },
+        video: {
+          width: { ideal: width, max: 1280 },
+          height: { ideal: height, max: 720 },
+          frameRate: { ideal: 30, max: 30 },
+          facingMode,
+        },
         audio: false,
       });
 
       videoEl.srcObject = this.stream;
       await videoEl.play();
     } catch (err) {
+      this.stop(videoEl);
       throw this.classifyError(err);
     }
   }
@@ -52,6 +74,12 @@ class CameraManagerClass {
 
   private classifyError(err: unknown): { type: CameraError; message: string } {
     if (err instanceof DOMException) {
+      if (err.name === 'NotSupportedError') {
+        return {
+          type: 'unsupported',
+          message: 'This browser does not support camera access.',
+        };
+      }
       if (
         err.name === 'NotAllowedError' ||
         err.name === 'PermissionDeniedError'
@@ -74,7 +102,49 @@ class CameraManagerClass {
           message: 'Camera does not support the required settings.',
         };
       }
+      if (err.name === 'NotReadableError' || err.name === 'TrackStartError') {
+        return {
+          type: 'not-readable',
+          message:
+            'The camera is already in use by another app or could not be accessed.',
+        };
+      }
+      if (err.name === 'AbortError') {
+        return {
+          type: 'play-failed',
+          message:
+            'The camera started, but the video preview could not begin. Try again.',
+        };
+      }
     }
+
+    if (err instanceof Error) {
+      const normalized = err.message.toLowerCase();
+
+      if (normalized.includes('notallowed') || normalized.includes('permission')) {
+        return {
+          type: 'permission-denied',
+          message:
+            'Camera access was denied. Please allow camera access to play.',
+        };
+      }
+
+      if (normalized.includes('notfound') || normalized.includes('device')) {
+        return {
+          type: 'not-found',
+          message: 'No camera found. Please connect a camera and try again.',
+        };
+      }
+
+      if (normalized.includes('play') || normalized.includes('autoplay')) {
+        return {
+          type: 'play-failed',
+          message:
+            'The camera started, but the video preview could not begin. Try again.',
+        };
+      }
+    }
+
     return { type: 'unknown', message: 'Camera could not be started.' };
   }
 }

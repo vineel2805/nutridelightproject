@@ -1,13 +1,15 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { gestureService } from './GestureRecognizerService';
-import { mapGestureToMove } from './gestureMapping';
 import {
-  StabilityBuffer,
-  computeWristMotion,
-  isHandMoving,
-} from './stabilityBuffer';
+  GestureMotionTracker,
+  TemporalConsensusBuffer,
+} from './gestureTemporal';
+import {
+  classifyNormalizedHand,
+  normalizeHandLandmarks,
+} from './rpsGeometry';
 import { GESTURE_CONFIG } from './gestureConfig';
-import type { GestureStatus, NormalizedLandmark } from './gestureTypes';
+import type { GestureStatus } from './gestureTypes';
 import type { GamePhase } from '../game/gameTypes';
 
 // ============================================================
@@ -32,10 +34,12 @@ export interface GestureDebugInfo {
   label: string;
   confidence: number;
   voteRatio: number;
+  weightedMargin: number;
   consecutiveCount: number;
   motion: number;
   status: GestureStatus;
   serviceStatus: string;
+  rejectionReason: string | null;
 }
 
 export function useGestureDetection({
@@ -49,26 +53,92 @@ export function useGestureDetection({
   const [debugInfo, setDebugInfo] = useState<GestureDebugInfo | null>(null);
   const [serviceReady, setServiceReady] = useState(false);
 
-  const stableBufferRef = useRef(new StabilityBuffer());
-  const prevLandmarksRef = useRef<NormalizedLandmark[][] | null>(null);
+  const stableBufferRef = useRef(new TemporalConsensusBuffer());
+  const motionTrackerRef = useRef(new GestureMotionTracker());
   const lastInferenceTime = useRef(0);
   const rafRef = useRef<number | null>(null);
   const rvfcRef = useRef<number | null>(null);
   const activeRef = useRef(false);
+  const warmedUpRef = useRef(false);
+  const previousPhaseRef = useRef<GamePhase>(phase);
+  const lastStatusRef = useRef<GestureStatus>({ kind: 'none' });
+  const [pageVisible, setPageVisible] = useState(
+    () => typeof document === 'undefined' || document.visibilityState !== 'hidden'
+  );
   const onStableRef = useRef(onStableGesture);
   onStableRef.current = onStableGesture;
 
+  const emitGestureStatus = useCallback((nextStatus: GestureStatus) => {
+    const previous = lastStatusRef.current;
+
+    const sameStatus = (() => {
+      if (previous.kind !== nextStatus.kind) return false;
+
+      switch (nextStatus.kind) {
+        case 'detecting':
+          return (
+            previous.kind === 'detecting' &&
+            previous.move === nextStatus.move
+          );
+        case 'stable':
+          return (
+            previous.kind === 'stable' &&
+            previous.move === nextStatus.move
+          );
+        case 'error':
+          return previous.kind === 'error' && previous.message === nextStatus.message;
+        default:
+          return true;
+      }
+    })();
+
+    if (!sameStatus) {
+      lastStatusRef.current = nextStatus;
+      setGestureStatus(nextStatus);
+    }
+  }, []);
+
   // Initialize MediaPipe service on mount
   useEffect(() => {
+    const video = videoRef.current;
+
     gestureService
       .initialize()
       .then(() => setServiceReady(true))
       .catch(() => {
-        setGestureStatus({ kind: 'error', message: 'Gesture model failed to load' });
+        emitGestureStatus({ kind: 'error', message: 'Gesture model failed to load' });
       });
 
     return () => {
-      gestureService.destroy();
+      activeRef.current = false;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      if (rvfcRef.current !== null) {
+        if (video) {
+          video.cancelVideoFrameCallback(rvfcRef.current);
+        }
+        rvfcRef.current = null;
+      }
+    };
+  }, [emitGestureStatus, videoRef]);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      const visible = document.visibilityState !== 'hidden';
+      setPageVisible(visible);
+
+      if (!visible) {
+        stableBufferRef.current.reset();
+        motionTrackerRef.current.reset();
+        warmedUpRef.current = false;
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -78,6 +148,13 @@ export function useGestureDetection({
 
       const video = videoRef.current;
       if (!video || video.readyState < 2 || !gestureService.isReady()) return;
+
+      if (!gestureService.isWarmedUp() && !warmedUpRef.current) {
+        if (gestureService.warmup(video, timestamp)) {
+          warmedUpRef.current = true;
+        }
+        return;
+      }
 
       // Throttle to INFERENCE_FPS
       const minInterval = 1000 / GESTURE_CONFIG.INFERENCE_FPS;
@@ -91,62 +168,137 @@ export function useGestureDetection({
       const hasHand = result.landmarks.length > 0;
 
       if (!hasHand) {
-        stableBufferRef.current.push(null);
+        stableBufferRef.current.reset();
+        motionTrackerRef.current.reset();
         const newStatus: GestureStatus = { kind: 'noHand' };
-        setGestureStatus(newStatus);
-        setDebugInfo((d) =>
-          d ? { ...d, label: 'None', confidence: 0, status: newStatus } : null
-        );
-        prevLandmarksRef.current = null;
+        emitGestureStatus(newStatus);
+        if (import.meta.env.DEV) {
+          setDebugInfo({
+            label: 'None',
+            confidence: 0,
+            voteRatio: 0,
+            weightedMargin: 0,
+            consecutiveCount: 0,
+            motion: 0,
+            status: newStatus,
+            serviceStatus: gestureService.getStatus(),
+            rejectionReason: 'no_hand',
+          });
+        }
         return;
       }
 
-      const topGesture = result.gestures[0];
-      const label = topGesture?.label ?? 'None';
-      const confidence = topGesture?.confidence ?? 0;
+      const motionState = motionTrackerRef.current.update(result.landmarks[0], timestamp);
 
-      const mappedMove = mapGestureToMove(label, confidence);
-
-      // Motion check
-      const motion = computeWristMotion(prevLandmarksRef.current, result.landmarks);
-      prevLandmarksRef.current = result.landmarks;
-      const moving = isHandMoving(motion);
-
-      // Push to stability buffer (null if moving or no valid move)
-      stableBufferRef.current.push(moving ? null : mappedMove);
-      const stability = stableBufferRef.current.evaluate();
-
-      let newStatus: GestureStatus;
-      if (moving) {
-        newStatus = { kind: 'moving' };
-      } else if (stability.stable && stability.move) {
-        newStatus = { kind: 'stable', move: stability.move, confidence };
-        onStableRef.current?.(stability.move);
-      } else {
-        newStatus = { kind: 'detecting', move: mappedMove, confidence };
+      if (motionState.enteringMoving) {
+        stableBufferRef.current.reset();
       }
 
-      setGestureStatus(newStatus);
-      setDebugInfo({
-        label,
-        confidence,
-        voteRatio: stability.voteRatio,
-        consecutiveCount: stability.consecutiveCount,
-        motion,
-        status: newStatus,
-        serviceStatus: gestureService.getStatus(),
-      });
+      const normalized = normalizeHandLandmarks(
+        result.landmarks[0],
+        result.handedness[0]?.label
+      );
+
+      if (!normalized) {
+        stableBufferRef.current.push(null);
+        const newStatus: GestureStatus = motionState.moving
+          ? { kind: 'moving' }
+          : { kind: 'detecting', move: null, confidence: 0 };
+
+        emitGestureStatus(newStatus);
+
+        if (import.meta.env.DEV) {
+          setDebugInfo({
+            label: 'Unknown',
+            confidence: 0,
+            voteRatio: 0,
+            weightedMargin: 0,
+            consecutiveCount: 0,
+            motion: motionState.motion,
+            status: newStatus,
+            serviceStatus: gestureService.getStatus(),
+            rejectionReason: 'low_landmark_quality',
+          });
+        }
+
+        return;
+      }
+
+      const classification = classifyNormalizedHand(normalized);
+
+      if (motionState.moving) {
+        stableBufferRef.current.push(null);
+      } else if (classification.move) {
+        stableBufferRef.current.push({
+          move: classification.move,
+          confidence: classification.confidence,
+        });
+      } else {
+        stableBufferRef.current.push(null);
+      }
+
+      const consensus = stableBufferRef.current.evaluate();
+
+      let newStatus: GestureStatus;
+      if (motionState.moving) {
+        newStatus = { kind: 'moving' };
+      } else if (consensus.stable && consensus.move) {
+        newStatus = {
+          kind: 'stable',
+          move: consensus.move,
+          confidence: consensus.confidence,
+        };
+        onStableRef.current?.(consensus.move);
+      } else {
+        newStatus = {
+          kind: 'detecting',
+          move: classification.move,
+          confidence: classification.confidence,
+        };
+      }
+
+      emitGestureStatus(newStatus);
+
+      if (import.meta.env.DEV) {
+        setDebugInfo({
+          label: classification.move ?? 'Unknown',
+          confidence: classification.confidence,
+          voteRatio: consensus.weightedScore,
+          weightedMargin: consensus.weightedMargin,
+          consecutiveCount: consensus.consecutiveCount,
+          motion: motionState.motion,
+          status: newStatus,
+          serviceStatus: gestureService.getStatus(),
+          rejectionReason: classification.rejectionReason,
+        });
+      }
     },
-    [videoRef]
+    [emitGestureStatus, videoRef]
   );
 
   // Main inference loop — prefers requestVideoFrameCallback, falls back to rAF
   useEffect(() => {
-    const active = ACTIVE_PHASES.includes(phase) && serviceReady;
+    const active = ACTIVE_PHASES.includes(phase) && serviceReady && pageVisible;
     activeRef.current = active;
 
+    if (phase === 'capture' && previousPhaseRef.current !== 'capture') {
+      stableBufferRef.current.reset();
+      motionTrackerRef.current.reset();
+      warmedUpRef.current = false;
+      emitGestureStatus({ kind: 'none' });
+      if (import.meta.env.DEV) {
+        setDebugInfo(null);
+      }
+    }
+
+    previousPhaseRef.current = phase;
+
     if (!active) {
-      stableBufferRef.current.clear();
+      if (!pageVisible) {
+        stableBufferRef.current.reset();
+        motionTrackerRef.current.reset();
+        warmedUpRef.current = false;
+      }
       return;
     }
 
@@ -186,7 +338,7 @@ export function useGestureDetection({
         }
       };
     }
-  }, [phase, serviceReady, processFrame, videoRef]);
+  }, [emitGestureStatus, pageVisible, phase, processFrame, serviceReady, videoRef]);
 
   return { gestureStatus, debugInfo, serviceReady };
 }

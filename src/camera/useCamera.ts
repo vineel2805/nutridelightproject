@@ -21,7 +21,11 @@ export function useCamera(): UseCameraReturn {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const startCamera = useCallback(async () => {
-    if (!videoRef.current) return;
+    if (!videoRef.current) {
+      setStatus('error');
+      setErrorMessage('Camera preview element is not ready yet.');
+      throw new Error('Camera preview element is not ready yet.');
+    }
     setStatus('requesting');
     setErrorMessage(null);
 
@@ -31,6 +35,7 @@ export function useCamera(): UseCameraReturn {
     } catch (err: any) {
       setStatus('error');
       setErrorMessage(err?.message ?? 'Camera could not be started.');
+      throw err;
     }
   }, []);
 
