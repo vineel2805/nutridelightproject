@@ -33,13 +33,17 @@ interface UseGestureDetectionOptions {
 export interface GestureDebugInfo {
   label: string;
   confidence: number;
+  margin: number;
   voteRatio: number;
   weightedMargin: number;
   consecutiveCount: number;
   motion: number;
+  globalMotion: number;
+  poseMotion: number;
   status: GestureStatus;
   serviceStatus: string;
   rejectionReason: string | null;
+  blockReason: string | null;
 }
 
 export function useGestureDetection({
@@ -59,7 +63,6 @@ export function useGestureDetection({
   const rafRef = useRef<number | null>(null);
   const rvfcRef = useRef<number | null>(null);
   const activeRef = useRef(false);
-  const warmedUpRef = useRef(false);
   const previousPhaseRef = useRef<GamePhase>(phase);
   const lastStatusRef = useRef<GestureStatus>({ kind: 'none' });
   const [pageVisible, setPageVisible] = useState(
@@ -132,7 +135,6 @@ export function useGestureDetection({
       if (!visible) {
         stableBufferRef.current.reset();
         motionTrackerRef.current.reset();
-        warmedUpRef.current = false;
       }
     };
 
@@ -149,9 +151,9 @@ export function useGestureDetection({
       const video = videoRef.current;
       if (!video || video.readyState < 2 || !gestureService.isReady()) return;
 
-      if (!gestureService.isWarmedUp() && !warmedUpRef.current) {
+      if (!gestureService.isWarmedUp()) {
         if (gestureService.warmup(video, timestamp)) {
-          warmedUpRef.current = true;
+          // warm-up only once per service lifecycle
         }
         return;
       }
@@ -176,28 +178,32 @@ export function useGestureDetection({
           setDebugInfo({
             label: 'None',
             confidence: 0,
+            margin: 0,
             voteRatio: 0,
             weightedMargin: 0,
             consecutiveCount: 0,
             motion: 0,
+            globalMotion: 0,
+            poseMotion: 0,
             status: newStatus,
             serviceStatus: gestureService.getStatus(),
             rejectionReason: 'no_hand',
+            blockReason: 'no_hand',
           });
         }
         return;
-      }
-
-      const motionState = motionTrackerRef.current.update(result.landmarks[0], timestamp);
-
-      if (motionState.enteringMoving) {
-        stableBufferRef.current.reset();
       }
 
       const normalized = normalizeHandLandmarks(
         result.landmarks[0],
         result.handedness[0]?.label
       );
+
+      const motionState = motionTrackerRef.current.update(result.landmarks[0], normalized);
+
+      if (motionState.enteringMoving) {
+        stableBufferRef.current.reset();
+      }
 
       if (!normalized) {
         stableBufferRef.current.push(null);
@@ -211,13 +217,17 @@ export function useGestureDetection({
           setDebugInfo({
             label: 'Unknown',
             confidence: 0,
+            margin: 0,
             voteRatio: 0,
             weightedMargin: 0,
             consecutiveCount: 0,
             motion: motionState.motion,
+            globalMotion: motionState.globalMotion,
+            poseMotion: motionState.poseMotion,
             status: newStatus,
             serviceStatus: gestureService.getStatus(),
             rejectionReason: 'low_landmark_quality',
+            blockReason: 'low_landmark_quality',
           });
         }
 
@@ -228,9 +238,11 @@ export function useGestureDetection({
 
       if (
         phase === 'capture' &&
-        !motionState.moving &&
+        motionState.canFastLock &&
         classification.move &&
         classification.confidence >= GESTURE_CONFIG.CAPTURE_FAST_CONFIDENCE
+        && classification.margin >= GESTURE_CONFIG.CLASSIFIER_MIN_MARGIN
+        && classification.features.quality >= GESTURE_CONFIG.LANDMARK_QUALITY_THRESHOLD
       ) {
         stableBufferRef.current.reset();
         const fastStatus: GestureStatus = {
@@ -246,13 +258,17 @@ export function useGestureDetection({
           setDebugInfo({
             label: classification.move,
             confidence: classification.confidence,
+            margin: classification.margin,
             voteRatio: 1,
             weightedMargin: 1,
             consecutiveCount: 1,
             motion: motionState.motion,
+            globalMotion: motionState.globalMotion,
+            poseMotion: motionState.poseMotion,
             status: fastStatus,
             serviceStatus: gestureService.getStatus(),
             rejectionReason: classification.rejectionReason,
+            blockReason: null,
           });
         }
 
@@ -292,17 +308,25 @@ export function useGestureDetection({
 
       emitGestureStatus(newStatus);
 
+      const blockReason = motionState.moving
+        ? 'moving'
+        : classification.rejectionReason ?? null;
+
       if (import.meta.env.DEV) {
         setDebugInfo({
           label: classification.move ?? 'Unknown',
           confidence: classification.confidence,
+          margin: classification.margin,
           voteRatio: consensus.weightedScore,
           weightedMargin: consensus.weightedMargin,
           consecutiveCount: consensus.consecutiveCount,
           motion: motionState.motion,
+          globalMotion: motionState.globalMotion,
+          poseMotion: motionState.poseMotion,
           status: newStatus,
           serviceStatus: gestureService.getStatus(),
           rejectionReason: classification.rejectionReason,
+          blockReason,
         });
       }
     },
@@ -317,7 +341,6 @@ export function useGestureDetection({
     if (phase === 'capture' && previousPhaseRef.current !== 'capture') {
       stableBufferRef.current.reset();
       motionTrackerRef.current.reset();
-      warmedUpRef.current = false;
       emitGestureStatus({ kind: 'none' });
       if (import.meta.env.DEV) {
         setDebugInfo(null);
@@ -330,7 +353,6 @@ export function useGestureDetection({
       if (!pageVisible) {
         stableBufferRef.current.reset();
         motionTrackerRef.current.reset();
-        warmedUpRef.current = false;
       }
       return;
     }

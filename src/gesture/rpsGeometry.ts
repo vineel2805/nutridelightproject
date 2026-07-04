@@ -71,6 +71,7 @@ export interface HandFeatureSet {
 export interface RpsClassificationResult {
   move: RpsMove | null;
   confidence: number;
+  margin: number;
   rejectionReason: string | null;
   scores: Record<RpsMove, number>;
   features: HandFeatureSet;
@@ -406,6 +407,7 @@ export function classifyNormalizedHand(
     return {
       move: null,
       confidence: 0,
+      margin: 0,
       rejectionReason: 'low_landmark_quality',
       scores: { rock: 0, paper: 0, scissors: 0 },
       features,
@@ -464,6 +466,7 @@ export function classifyNormalizedHand(
     return {
       move: null,
       confidence,
+      margin: confidence - secondBest,
       rejectionReason: 'no_pattern_match',
       scores,
       features,
@@ -477,6 +480,7 @@ export function classifyNormalizedHand(
     return {
       move: null,
       confidence,
+      margin,
       rejectionReason: 'low_margin',
       scores,
       features,
@@ -486,6 +490,7 @@ export function classifyNormalizedHand(
   return {
     move,
     confidence,
+    margin,
     rejectionReason: null,
     scores,
     features,

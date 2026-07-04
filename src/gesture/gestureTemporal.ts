@@ -1,5 +1,6 @@
 import type { NormalizedLandmark } from './gestureTypes';
 import type { RpsMove } from '../game/gameTypes';
+import type { NormalizedHandFrame } from './rpsGeometry';
 import { GESTURE_CONFIG } from './gestureConfig';
 
 interface Point2D {
@@ -8,17 +9,21 @@ interface Point2D {
 }
 
 interface MotionFrame {
-  timestamp: number;
   wrist: Point2D;
   palmCenter: Point2D;
   mcpCenter: Point2D;
+  scale: number;
+  normalizedPoints: Point2D[];
 }
 
 export interface MotionState {
   motion: number;
+  globalMotion: number;
+  poseMotion: number;
   moving: boolean;
   enteringMoving: boolean;
   exitingMoving: boolean;
+  canFastLock: boolean;
 }
 
 export interface GestureEvidence {
@@ -38,9 +43,25 @@ export interface ConsensusResult {
 
 const WRIST = 0;
 const INDEX_MCP = 5;
+const INDEX_PIP = 6;
+const INDEX_TIP = 8;
 const MIDDLE_MCP = 9;
+const MIDDLE_PIP = 10;
+const MIDDLE_TIP = 12;
 const RING_MCP = 13;
+const RING_PIP = 14;
+const RING_TIP = 16;
 const PINKY_MCP = 17;
+const PINKY_PIP = 18;
+const PINKY_TIP = 20;
+
+const JITTER_DEAD_ZONE = 0.008;
+const POSE_DEAD_ZONE = 0.012;
+const ENTER_STRONG_THRESHOLD = 0.16;
+const ENTER_THRESHOLD = 0.06;
+const EXIT_THRESHOLD = 0.03;
+const EXIT_LOW_FRAMES = 1;
+const FAST_LOCK_MAX_MOTION = 0.028;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -54,6 +75,14 @@ function distance(a: Point2D, b: Point2D): number {
   const dx = a.x - b.x;
   const dy = a.y - b.y;
   return Math.sqrt(dx * dx + dy * dy);
+}
+
+function subtract(a: Point2D, b: Point2D): Point2D {
+  return { x: a.x - b.x, y: a.y - b.y };
+}
+
+function magnitude(vector: Point2D): number {
+  return Math.sqrt(vector.x * vector.x + vector.y * vector.y);
 }
 
 function average(points: Point2D[]): Point2D {
@@ -71,6 +100,14 @@ function average(points: Point2D[]): Point2D {
   };
 }
 
+function deadZone(value: number, threshold: number): number {
+  return value > threshold ? value - threshold : 0;
+}
+
+function keyPosePointIndices(): number[] {
+  return [INDEX_PIP, INDEX_TIP, MIDDLE_PIP, MIDDLE_TIP, RING_PIP, RING_TIP, PINKY_PIP, PINKY_TIP];
+}
+
 export class GestureMotionTracker {
   private history: MotionFrame[] = [];
   private motionSamples: number[] = [];
@@ -84,19 +121,23 @@ export class GestureMotionTracker {
     this.exitHold = 0;
   }
 
-  update(landmarks: NormalizedLandmark[], timestamp: number): MotionState {
-    if (landmarks.length <= PINKY_MCP) {
+  update(landmarks: NormalizedLandmark[], normalizedFrame: NormalizedHandFrame | null): MotionState {
+    if (landmarks.length <= PINKY_TIP) {
       this.reset();
       return {
         motion: 0,
+        globalMotion: 0,
+        poseMotion: 0,
         moving: false,
         enteringMoving: false,
         exitingMoving: false,
+        canFastLock: false,
       };
     }
 
+    const scale = Math.max(normalizedFrame?.scale ?? distance(landmarks[WRIST], landmarks[MIDDLE_MCP]), 0.0001);
+
     const currentFrame: MotionFrame = {
-      timestamp,
       wrist: pointFrom(landmarks[WRIST]),
       palmCenter: average([
         pointFrom(landmarks[WRIST]),
@@ -111,6 +152,8 @@ export class GestureMotionTracker {
         pointFrom(landmarks[RING_MCP]),
         pointFrom(landmarks[PINKY_MCP]),
       ]),
+      scale,
+      normalizedPoints: normalizedFrame?.points ?? [],
     };
 
     const previousFrame = this.history[this.history.length - 1];
@@ -122,21 +165,40 @@ export class GestureMotionTracker {
     if (!previousFrame) {
       return {
         motion: 0,
+        globalMotion: 0,
+        poseMotion: 0,
         moving: this.moving,
         enteringMoving: false,
         exitingMoving: false,
+        canFastLock: true,
       };
     }
 
-    const dt = Math.max(1, timestamp - previousFrame.timestamp) / 1000;
-    const wristVelocity = distance(currentFrame.wrist, previousFrame.wrist) / dt;
-    const palmVelocity =
-      distance(currentFrame.palmCenter, previousFrame.palmCenter) / dt;
-    const mcpVelocity =
-      distance(currentFrame.mcpCenter, previousFrame.mcpCenter) / dt;
+    const averageScale = Math.max((currentFrame.scale + previousFrame.scale) / 2, 0.0001);
 
-    const motion =
-      wristVelocity * 0.45 + palmVelocity * 0.35 + mcpVelocity * 0.2;
+    const wristShift = distance(currentFrame.wrist, previousFrame.wrist) / averageScale;
+    const palmShift = distance(currentFrame.palmCenter, previousFrame.palmCenter) / averageScale;
+    const mcpShift = distance(currentFrame.mcpCenter, previousFrame.mcpCenter) / averageScale;
+
+    const rawGlobalMotion = wristShift * 0.25 + palmShift * 0.45 + mcpShift * 0.3;
+    const globalMotion = deadZone(rawGlobalMotion, JITTER_DEAD_ZONE);
+
+    let poseDelta = 0;
+    let poseSamples = 0;
+    if (currentFrame.normalizedPoints.length >= 21 && previousFrame.normalizedPoints.length >= 21) {
+      const keyIndices = keyPosePointIndices();
+      for (const index of keyIndices) {
+        const current = currentFrame.normalizedPoints[index];
+        const previous = previousFrame.normalizedPoints[index];
+        poseDelta += magnitude(subtract(current, previous));
+        poseSamples += 1;
+      }
+    }
+
+    const rawPoseMotion = poseSamples > 0 ? poseDelta / poseSamples : 0;
+    const poseMotion = deadZone(rawPoseMotion, POSE_DEAD_ZONE);
+
+    const motion = poseMotion * 0.7 + globalMotion * 0.3;
 
     this.motionSamples.push(motion);
     if (this.motionSamples.length > GESTURE_CONFIG.MOTION_HISTORY_SIZE) {
@@ -148,14 +210,15 @@ export class GestureMotionTracker {
       this.motionSamples.length;
 
     const wasMoving = this.moving;
+    const strongMotion = rawGlobalMotion >= ENTER_STRONG_THRESHOLD || rawPoseMotion >= ENTER_STRONG_THRESHOLD;
 
-    if (!this.moving && smoothedMotion >= GESTURE_CONFIG.MOTION_ENTER_THRESHOLD) {
+    if (!this.moving && (strongMotion || smoothedMotion >= ENTER_THRESHOLD)) {
       this.moving = true;
       this.exitHold = 0;
     } else if (this.moving) {
-      if (smoothedMotion <= GESTURE_CONFIG.MOTION_EXIT_THRESHOLD) {
+      if (smoothedMotion <= EXIT_THRESHOLD) {
         this.exitHold += 1;
-        if (this.exitHold >= 2) {
+        if (this.exitHold >= EXIT_LOW_FRAMES) {
           this.moving = false;
           this.exitHold = 0;
         }
@@ -166,9 +229,15 @@ export class GestureMotionTracker {
 
     return {
       motion: smoothedMotion,
+      globalMotion: rawGlobalMotion,
+      poseMotion: rawPoseMotion,
       moving: this.moving,
       enteringMoving: !wasMoving && this.moving,
       exitingMoving: wasMoving && !this.moving,
+      canFastLock:
+        !this.moving &&
+        smoothedMotion <= FAST_LOCK_MAX_MOTION &&
+        rawPoseMotion <= FAST_LOCK_MAX_MOTION,
     };
   }
 }
@@ -220,8 +289,7 @@ export class TemporalConsensusBuffer {
       evidenceCount += 1;
       const recency = (i + 1) / this.buffer.length;
       const weight = 0.75 + recency * 0.5;
-      const weightedConfidence = weight * clamp(sample.confidence, 0, 1);
-      scores[sample.move] += weightedConfidence;
+      scores[sample.move] += weight * clamp(sample.confidence, 0, 1);
       totalWeight += weight;
     }
 
@@ -237,8 +305,9 @@ export class TemporalConsensusBuffer {
       };
     }
 
-    const sortedScores = (Object.entries(scores) as Array<[RpsMove, number]>)
-      .sort((left, right) => right[1] - left[1]);
+    const sortedScores = (Object.entries(scores) as Array<[RpsMove, number]>).sort(
+      (left, right) => right[1] - left[1]
+    );
     const [bestMove, bestScore] = sortedScores[0];
     const secondBestScore = sortedScores[1][1];
     const weightedScore = bestScore / totalWeight;
