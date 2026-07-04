@@ -121,7 +121,11 @@ export class GestureMotionTracker {
     this.exitHold = 0;
   }
 
-  update(landmarks: NormalizedLandmark[], normalizedFrame: NormalizedHandFrame | null): MotionState {
+  update(landmarks: NormalizedLandmark[], normalizedFrame: NormalizedHandFrame | null): MotionState;
+  update(landmarks: NormalizedLandmark[], timestamp: number): MotionState;
+  update(landmarks: NormalizedLandmark[], frameOrTimestamp: NormalizedHandFrame | number | null): MotionState {
+    const normalizedFrame = typeof frameOrTimestamp === 'number' ? null : frameOrTimestamp;
+
     if (landmarks.length <= PINKY_TIP) {
       this.reset();
       return {
