@@ -367,15 +367,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       )}
 
       {/* ── Back button ── */}
-      <button
-        className="absolute top-4 left-4 z-50 w-10 h-10 rounded-full flex items-center justify-center"
-        style={{ background: 'rgba(0,0,0,0.5)', color: 'white', border: 'none', cursor: 'pointer', backdropFilter: 'blur(8px)' }}
-        onClick={onBack}
-        id="game-back-btn"
-        aria-label="Back to welcome"
-      >
-        ←
-      </button>
+      {/* ── Back button ── */}
+
+       
 
       {/* ── Dev debug info (hidden in production) ── */}
       {import.meta.env.DEV && debugInfo && (
