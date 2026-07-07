@@ -10,7 +10,6 @@ import { ScoreHUD } from '../components/ScoreHUD';
 import { CountdownOverlay } from '../components/CountdownOverlay';
 import { MoveReveal } from '../components/MoveReveal';
 import { BuddyAvatar } from '../components/BuddyAvatar';
-import { BuddySpeechBubble } from '../components/BuddySpeechBubble';
 import { CameraError } from '../components/CameraError';
 import type { AvatarState } from '../avatar/avatarTypes';
 import type { RpsMove } from '../game/gameTypes';
@@ -328,15 +327,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
           </div>
         )}
 
-        <BuddySpeechBubble
-          phase={state.phase}
-          buddyMove={state.buddyMove}
-          roundOutcome={state.roundOutcome}
-          gestureKind={gestureStatus.kind}
-          detectionPrompt={detectionPromptText}
-        />
-
-        <BuddyAvatar state={buddyAvatarState} />
+        <BuddyAvatar state={buddyAvatarState} message={detectionPromptText} />
       </div>
 
       {/* ── Layer 5: Score HUD ── */}

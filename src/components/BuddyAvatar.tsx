@@ -38,6 +38,7 @@ const STATE_ANIMATION: Partial<Record<AvatarState, string>> = {
 interface BuddyAvatarProps {
   state: AvatarState;
   className?: string;
+  message?: string | null;
 }
 
 /**
@@ -48,6 +49,7 @@ interface BuddyAvatarProps {
 export const BuddyAvatar: React.FC<BuddyAvatarProps> = ({
   state,
   className = '',
+  message = null,
 }) => {
   const imgSrc = AVATAR_IMAGES[state] ?? '/avatar/buddy_idle.png';
   const animation = STATE_ANIMATION[state] ?? 'animate-buddy-float';
@@ -62,6 +64,43 @@ export const BuddyAvatar: React.FC<BuddyAvatarProps> = ({
         paddingRight: '2%',
       }}
     >
+      {message && (
+        <div
+          className="absolute z-30 animate-bounce-in"
+          style={{
+            top: '4%',
+            right: '100%',
+            marginRight: '10px',
+            maxWidth: '150px',
+          }}
+        >
+          <div
+            className="relative px-4 py-2.5 rounded-2xl text-sm font-semibold text-center"
+            style={{
+              background: 'white',
+              color: 'var(--text-dark)',
+              boxShadow: '0 4px 18px rgba(0,0,0,0.18)',
+              lineHeight: 1.3,
+            }}
+          >
+            {message}
+            <div
+              style={{
+                position: 'absolute',
+                top: '50%',
+                right: '-8px',
+                transform: 'translateY(-50%)',
+                width: 0,
+                height: 0,
+                borderTop: '7px solid transparent',
+                borderBottom: '7px solid transparent',
+                borderLeft: '9px solid white',
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Move emoji overlay (during capture/reveal) */}
       {moveEmoji && (
         <div
