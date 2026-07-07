@@ -55,7 +55,7 @@ export const BuddyWinScreen: React.FC<BuddyWinScreenProps> = ({
             className="font-bold text-lg"
             style={{ color: 'var(--text-dark)', fontFamily: 'var(--font-display)' }}
           >
-            Better luck next time! 🍊
+            Better luck next time! 
           </p>
           <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
             Buddy is tough — but you can do it! Give it another shot.
