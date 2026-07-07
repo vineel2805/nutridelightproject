@@ -16,7 +16,11 @@ import type { AvatarState } from '../avatar/avatarTypes';
 import type { RpsMove } from '../game/gameTypes';
 
 interface GameScreenProps {
-  onMatchComplete: (result: 'playerWin' | 'buddyWin') => void;
+  onMatchComplete: (
+    result: 'playerWin' | 'buddyWin',
+    playerScore: number,
+    buddyScore: number
+  ) => void;
   onBack: () => void;
 }
 
@@ -235,10 +239,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       case 'matchResult': {
         if (state.matchResult === 'playerWin') {
           AudioManager.play('playerMatchWin');
-          onMatchComplete('playerWin');
+          onMatchComplete('playerWin', state.playerScore, state.buddyScore);
         } else {
           AudioManager.play('buddyMatchWin');
-          onMatchComplete('buddyWin');
+          onMatchComplete('buddyWin', state.playerScore, state.buddyScore);
         }
         break;
       }

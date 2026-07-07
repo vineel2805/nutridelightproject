@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { WelcomeScreen } from '../screens/WelcomeScreen';
 import { GameScreen } from '../screens/GameScreen';
-import { PlayerWinScreen } from '../screens/PlayerWinScreen';
-import { BuddyWinScreen } from '../screens/BuddyWinScreen';
+import { MatchResultScreen } from '../screens/MatchResultScreen';
 import { GestureLab } from '../screens/GestureLab';
 
 type AppScreen =
@@ -28,12 +27,27 @@ export const App: React.FC = () => {
     return 'welcome';
   });
 
-  const handleMatchComplete = (result: 'playerWin' | 'buddyWin') => {
+  const [matchSummary, setMatchSummary] = useState<{
+    result: 'playerWin' | 'buddyWin' | 'draw';
+    playerScore: number;
+    buddyScore: number;
+  } | null>(null);
+
+  const handleMatchComplete = (
+    result: 'playerWin' | 'buddyWin',
+    playerScore: number,
+    buddyScore: number
+  ) => {
+    setMatchSummary({ result, playerScore, buddyScore });
     setScreen(result === 'playerWin' ? 'playerWin' : 'buddyWin');
   };
 
   const handlePlayAgain = () => {
     setScreen('game');
+  };
+
+  const handleExit = () => {
+    setScreen('welcome');
   };
 
   return (
@@ -57,12 +71,24 @@ export const App: React.FC = () => {
         />
       )}
 
-      {screen === 'playerWin' && (
-        <PlayerWinScreen onPlayAgain={handlePlayAgain} />
+      {screen === 'playerWin' && matchSummary && (
+        <MatchResultScreen
+          result={matchSummary.result}
+          playerScore={matchSummary.playerScore}
+          buddyScore={matchSummary.buddyScore}
+          onPlayAgain={handlePlayAgain}
+          onExit={handleExit}
+        />
       )}
 
-      {screen === 'buddyWin' && (
-        <BuddyWinScreen onPlayAgain={handlePlayAgain} />
+      {screen === 'buddyWin' && matchSummary && (
+        <MatchResultScreen
+          result={matchSummary.result}
+          playerScore={matchSummary.playerScore}
+          buddyScore={matchSummary.buddyScore}
+          onPlayAgain={handlePlayAgain}
+          onExit={handleExit}
+        />
       )}
 
       {screen === 'lab' && (
