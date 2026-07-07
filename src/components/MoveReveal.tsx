@@ -53,7 +53,7 @@ export const MoveReveal: React.FC<MoveRevealProps> = ({
   return (
     <div
       className="absolute inset-0 z-50 flex flex-col items-center justify-center gap-4 pointer-events-none"
-      style={{ background: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)' }}
+      style={{ background: 'rgba(0,0,0,0.35)', backdropFilter: 'blur(2px)' }}
     >
       {/* Moves row */}
       <div className="flex items-center gap-4 animate-fade-in">

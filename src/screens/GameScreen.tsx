@@ -9,8 +9,8 @@ import { CameraView } from '../components/CameraView';
 import { ScoreHUD } from '../components/ScoreHUD';
 import { CountdownOverlay } from '../components/CountdownOverlay';
 import { MoveReveal } from '../components/MoveReveal';
-import { DetectionPrompt } from '../components/DetectionPrompt';
 import { BuddyAvatar } from '../components/BuddyAvatar';
+import { BuddySpeechBubble } from '../components/BuddySpeechBubble';
 import { CameraError } from '../components/CameraError';
 import type { AvatarState } from '../avatar/avatarTypes';
 import type { RpsMove } from '../game/gameTypes';
@@ -280,6 +280,19 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         ? '⏳ Loading gesture model...'
         : state.detectionPrompt;
 
+  const buddyMoveAsset =
+    state.buddyMove === 'rock'
+      ? '/avatar/buddy_rock.png'
+      : state.buddyMove === 'paper'
+        ? '/avatar/buddy_paper.png'
+        : state.buddyMove === 'scissors'
+          ? '/avatar/buddy_scissors.png'
+          : null;
+
+  const showBuddyMoveVisual =
+    (state.phase === 'reveal' || state.phase === 'roundResult') &&
+    !!buddyMoveAsset;
+
   // ─── Camera error state ───
   if (state.phase === 'error') {
     return (
@@ -307,8 +320,24 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         }}
       />
 
-      {/* ── Layer 3: Buddy avatar ── */}
-      <BuddyAvatar state={buddyAvatarState} />
+      {/* ── Layer 3: Buddy stage ── */}
+      <div className="buddy-stage">
+        {showBuddyMoveVisual && (
+          <div className="buddy-move-visual" aria-hidden="true">
+            <img src={buddyMoveAsset!} alt="" />
+          </div>
+        )}
+
+        <BuddySpeechBubble
+          phase={state.phase}
+          buddyMove={state.buddyMove}
+          roundOutcome={state.roundOutcome}
+          gestureKind={gestureStatus.kind}
+          detectionPrompt={detectionPromptText}
+        />
+
+        <BuddyAvatar state={buddyAvatarState} />
+      </div>
 
       {/* ── Layer 5: Score HUD ── */}
       {showHUD && (
@@ -329,9 +358,6 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         outcome={state.roundOutcome}
         visible={showReveal}
       />
-
-      {/* ── Layer 3: Detection prompt ── */}
-      <DetectionPrompt message={detectionPromptText} />
 
       {/* ── Waiting for Start overlay ── */}
       {state.phase === 'waitingForStart' && (
