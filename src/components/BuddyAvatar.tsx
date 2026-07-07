@@ -68,19 +68,20 @@ export const BuddyAvatar: React.FC<BuddyAvatarProps> = ({
         <div
           className="absolute z-30 animate-bounce-in"
           style={{
-            top: '4%',
-            right: '100%',
-            marginRight: '10px',
-            maxWidth: '150px',
+            top: '2%',
+            right: '60%',
+            marginRight: '16px',
+            width: '150px',
           }}
         >
           <div
-            className="relative px-4 py-2.5 rounded-2xl text-sm font-semibold text-center"
+            className="relative px-3 py-2 text-sm font-semibold text-center"
             style={{
               background: 'white',
               color: 'var(--text-dark)',
+              borderRadius: '10px',
               boxShadow: '0 4px 18px rgba(0,0,0,0.18)',
-              lineHeight: 1.3,
+              lineHeight: 1.25,
             }}
           >
             {message}
