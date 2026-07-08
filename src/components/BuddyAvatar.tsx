@@ -2,7 +2,9 @@ import React from 'react';
 import type { AvatarState } from '../avatar/avatarTypes';
 
 // ============================================================
-// Asset map — swap image paths when real assets arrive
+// Asset map — swap image paths when real assets arrive.
+// State names are from the PLAYER's perspective, so the image
+// shown on Buddy should reflect the opposite emotion.
 // ============================================================
 
 const AVATAR_IMAGES: Partial<Record<AvatarState, string>> = {
@@ -10,18 +12,14 @@ const AVATAR_IMAGES: Partial<Record<AvatarState, string>> = {
   listening: '/avatar/buddy_idle.png',
   ready: '/avatar/buddy_idle.png',
   countdown: '/avatar/buddy_idle.png',
-  roundWin: '/avatar/buddy_idle.png',  // Buddy loses
-  roundLoss: '/avatar/buddy_win.png', // Buddy wins round
+  rock: '/avatar/buddy_rock.png',
+  paper: '/avatar/buddy_paper.png',
+  scissors: '/avatar/buddy_scissors.png',
+  roundWin: '/avatar/buddy_loss.png',
+  roundLoss: '/avatar/buddy_win.png',
   draw: '/avatar/buddy_idle.png',
-  matchWin: '/avatar/buddy_loss.png',  // Buddy loses match
-  matchLoss: '/avatar/buddy_win.png',  // Buddy wins match
-};
-
-// Move states use emoji overlays
-const MOVE_EMOJI: Partial<Record<AvatarState, string>> = {
-  rock: '✊',
-  paper: '✋',
-  scissors: '✌️',
+  matchWin: '/avatar/buddy_loss.png',
+  matchLoss: '/avatar/buddy_win.png',
 };
 
 const STATE_ANIMATION: Partial<Record<AvatarState, string>> = {
@@ -53,7 +51,6 @@ export const BuddyAvatar: React.FC<BuddyAvatarProps> = ({
 }) => {
   const imgSrc = AVATAR_IMAGES[state] ?? '/avatar/buddy_idle.png';
   const animation = STATE_ANIMATION[state] ?? 'animate-buddy-float';
-  const moveEmoji = MOVE_EMOJI[state];
 
   return (
     <div
@@ -99,19 +96,6 @@ export const BuddyAvatar: React.FC<BuddyAvatarProps> = ({
               }}
             />
           </div>
-        </div>
-      )}
-
-      {/* Move emoji overlay (during capture/reveal) */}
-      {moveEmoji && (
-        <div
-          className="absolute top-0 left-0 w-full flex justify-center animate-bounce-in"
-          style={{
-            fontSize: 'clamp(2.5rem, 8vw, 4.5rem)',
-            lineHeight: 1,
-          }}
-        >
-          {moveEmoji}
         </div>
       )}
 
