@@ -1,32 +1,55 @@
-# React + TypeScript + Vite
+# NutriDelightProject
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+A small React + TypeScript app scaffolded with Vite.
 
-Currently, two official plugins are available:
+## Tech stack
+- React
+- TypeScript
+- Vite
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Prerequisites
+- Node.js 16+ (or newer)
+- npm, yarn, or pnpm
 
-## React Compiler
+## Install
+Using npm:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Or using yarn:
+
+```bash
+yarn
+```
+
+Or using pnpm:
+
+```bash
+pnpm install
+```
+
+## Run (development)
+
+```bash
+npm run dev
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Preview
+
+```bash
+npm run preview
+```
+
+## Contributing
+Contributions are welcome. Please open an issue or a pull request with a clear description of changes.
+
+## License
+If this repository doesn't include a LICENSE file, consider adding one (for example, MIT). Otherwise, see the LICENSE file for details.
