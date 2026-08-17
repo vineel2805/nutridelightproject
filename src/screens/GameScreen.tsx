@@ -163,6 +163,8 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
     switch (state.phase) {
       case 'matchIntro': {
+        AudioManager.play('welcome');
+        AudioManager.playVoice('buddyGreet');
         timerRef.current = setTimeout(() => {
           dispatch({ type: 'MATCH_INTRO_DONE' });
         }, GAME_CONFIG.MATCH_INTRO_MS);
@@ -180,17 +182,21 @@ export const GameScreen: React.FC<GameScreenProps> = ({
         let tick = 1;
         dispatch({ type: 'COUNTDOWN_TICK', payload: tick });
         AudioManager.play(`countdown${tick}` as any);
+        AudioManager.playVoice('buddyCallRock');
 
         countdownTickRef.current = setInterval(() => {
           tick++;
           if (tick <= 3) {
             dispatch({ type: 'COUNTDOWN_TICK', payload: tick });
             AudioManager.play(`countdown${tick}` as any);
+            if (tick === 2) AudioManager.playVoice('buddyCallPaper');
+            if (tick === 3) AudioManager.playVoice('buddyCallScissors');
           } else {
             clearInterval(countdownTickRef.current!);
             // Show GO
             dispatch({ type: 'COUNTDOWN_TICK', payload: 'GO' });
             AudioManager.play('go');
+            setTimeout(() => AudioManager.playVoice('buddyCallShoot'), GAME_CONFIG.BUDDY_VOICE_DELAY_MS);
 
             // Commit Buddy move BEFORE capture window opens
             const buddyMove = generateBuddyMove();
@@ -203,6 +209,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
                 if (!captureLockedRef.current) {
                   dispatch({ type: 'NO_GESTURE_DETECTED' });
                   AudioManager.play('noMove');
+                  AudioManager.playVoice('buddyNoMovePrompt');
                 }
               }, GAME_CONFIG.CAPTURE_WINDOW_MS);
             }, GAME_CONFIG.GO_HOLD_MS);
@@ -213,9 +220,16 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
       case 'reveal': {
         const outcome = state.roundOutcome;
-        if (outcome === 'playerWin') AudioManager.play('playerRoundWin');
-        else if (outcome === 'buddyWin') AudioManager.play('buddyRoundWin');
-        else AudioManager.play('draw');
+        if (outcome === 'playerWin') {
+          AudioManager.play('playerRoundWin');
+          AudioManager.playVoice('buddyRoundEncourage');
+        } else if (outcome === 'buddyWin') {
+          AudioManager.play('buddyRoundWin');
+          AudioManager.playVoice('buddyRoundTaunt');
+        } else {
+          AudioManager.play('draw');
+          AudioManager.playVoice('buddyDrawReact');
+        }
 
         timerRef.current = setTimeout(() => {
           dispatch({ type: 'REVEAL_DONE' });
@@ -238,9 +252,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
       case 'matchResult': {
         if (state.matchResult === 'playerWin') {
           AudioManager.play('playerMatchWin');
+          AudioManager.playVoice('buddyMatchConsole');
           onMatchComplete('playerWin', state.playerScore, state.buddyScore);
         } else {
           AudioManager.play('buddyMatchWin');
+          AudioManager.playVoice('buddyMatchCelebrate');
           onMatchComplete('buddyWin', state.playerScore, state.buddyScore);
         }
         break;

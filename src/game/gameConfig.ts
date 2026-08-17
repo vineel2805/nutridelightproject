@@ -29,6 +29,10 @@ export const GAME_CONFIG = {
 
   // Screen transition animation (ms) — used by CSS too
   SCREEN_TRANSITION_MS: 300,
+
+  // Delay before Buddy's voice line plays after a SFX trigger (ms)
+  // Prevents voice from stomping on the leading edge of a beep/GO sound
+  BUDDY_VOICE_DELAY_MS: 200,
 } as const;
 
 export type GameConfig = typeof GAME_CONFIG;
