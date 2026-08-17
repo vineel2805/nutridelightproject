@@ -374,7 +374,10 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 
       {/* ── Waiting for Start overlay ── */}
       {state.phase === 'waitingForStart' && (
-        <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-4 z-30">
+        <div
+          className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-4 z-30"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        >
           <button
             className="btn-primary"
             onClick={() => {
