@@ -84,6 +84,8 @@ export function useGestureDetection({
   );
   const onStableRef = useRef(onStableGesture);
   onStableRef.current = onStableGesture;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   const emitGestureStatus = useCallback((nextStatus: GestureStatus) => {
     const previous = lastStatusRef.current;
@@ -307,7 +309,7 @@ export function useGestureDetection({
 
       // ── Fast-lock path (source-aware) ──
       if (
-        phase === 'capture' &&
+        phaseRef.current === 'capture' &&
         motionState.canFastLock &&
         activeMove
       ) {

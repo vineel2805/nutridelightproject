@@ -6,6 +6,7 @@ import { useCamera } from '../camera/useCamera';
 import { useGestureDetection } from '../gesture/useGestureDetection';
 import { AudioManager } from '../audio/AudioManager';
 import { CameraView } from '../components/CameraView';
+import { HandLandmarkOverlay } from '../components/HandLandmarkOverlay';
 import { ScoreHUD } from '../components/ScoreHUD';
 import { CountdownOverlay } from '../components/CountdownOverlay';
 import { MoveReveal } from '../components/MoveReveal';
@@ -69,6 +70,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countdownTickRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const cameraStartAttemptRef = useRef(false);
+  const landmarkCanvasRef = useRef<HTMLCanvasElement>(null);
 
   // ─── Initialize camera flow ───
   useEffect(() => {
@@ -122,6 +124,7 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     videoRef,
     phase: state.phase,
     onStableGesture: handleStableGesture,
+    landmarkCanvasRef,
   });
 
   // ─── Detection prompt from gesture status ───
@@ -326,6 +329,9 @@ export const GameScreen: React.FC<GameScreenProps> = ({
     <div className="screen-container">
       {/* ── Layer 1: Camera video ── */}
       <CameraView videoRef={videoRef} />
+
+      {/* ── Layer 1.5: Hand landmark skeleton ── */}
+      <HandLandmarkOverlay canvasRef={landmarkCanvasRef} />
 
       {/* ── Layer 2: Scene gradient for readability ── */}
       <div
