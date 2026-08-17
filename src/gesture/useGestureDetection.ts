@@ -427,7 +427,8 @@ export function useGestureDetection({
       // ── Helper: draw skeleton to landmark canvas ──
       function this_drawSkeleton(vid: HTMLVideoElement, color: string) {
         const canvas = landmarkCanvasRef?.current;
-        if (!canvas || !result.landmarks[0]) return;
+        const landmarks = result?.landmarks[0];
+        if (!canvas || !landmarks) return;
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
 
@@ -439,7 +440,7 @@ export function useGestureDetection({
 
         drawHandSkeleton(
           ctx,
-          result.landmarks[0],
+          landmarks,
           vid.videoWidth || rect.width,
           vid.videoHeight || rect.height,
           rect.width,
