@@ -269,9 +269,14 @@ export class TemporalConsensusBuffer {
 
     if (sample && sample.move === this.lastMove) {
       this.consecutiveCount += 1;
+    } else if (sample) {
+      // Different move — restart streak
+      this.consecutiveCount = 1;
+      this.lastMove = sample.move;
     } else {
-      this.consecutiveCount = sample ? 1 : 0;
-      this.lastMove = sample ? sample.move : null;
+      // Null frame — decay instead of hard reset
+      // Keeps lastMove so the next matching frame continues the streak
+      this.consecutiveCount = Math.max(0, this.consecutiveCount - 1);
     }
   }
 

@@ -60,4 +60,39 @@ describe('gestureTemporal', () => {
     const settle2 = tracker.update(createLandmarks(0.0825, 0.0825), 800);
     expect(settle2.moving).toBe(false);
   });
+
+  it('decays consecutiveCount by 1 on a single null frame instead of resetting', () => {
+    const buffer = new TemporalConsensusBuffer(5);
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    // consecutiveCount = 2
+
+    buffer.push(null); // flicker
+    const result = buffer.evaluate();
+    expect(result.consecutiveCount).toBe(1); // decayed, not 0
+  });
+
+  it('two consecutive null frames decay consecutiveCount to 0', () => {
+    const buffer = new TemporalConsensusBuffer(5);
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    buffer.push({ move: 'rock', confidence: 0.9 });
+
+    buffer.push(null);
+    buffer.push(null);
+    expect(buffer.evaluate().consecutiveCount).toBe(0);
+  });
+
+  it('resumes streak from lastMove after null decay', () => {
+    const buffer = new TemporalConsensusBuffer(5);
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    // consecutiveCount = 2
+
+    buffer.push(null);
+    // consecutiveCount = 1, lastMove = 'rock' (preserved)
+
+    buffer.push({ move: 'rock', confidence: 0.9 });
+    // Same as lastMove → consecutiveCount = 2
+    expect(buffer.evaluate().consecutiveCount).toBe(2);
+  });
 });

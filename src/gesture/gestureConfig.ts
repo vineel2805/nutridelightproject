@@ -57,6 +57,11 @@ export const GESTURE_CONFIG = {
 
   /** Landmark quality threshold below which the pose is rejected */
   LANDMARK_QUALITY_THRESHOLD: 0.55,
+
+  /** Minimum MediaPipe gesture confidence to accept as primary classification.
+   *  Below this, fall back to geometry classifier.
+   *  This is the ONLY gate on the MediaPipe path — mapGestureToMove is bypassed. */
+  MEDIAPIPE_MIN_CONFIDENCE: 0.6,
 } as const;
 
 export type GestureConfig = typeof GESTURE_CONFIG;

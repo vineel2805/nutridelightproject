@@ -159,6 +159,17 @@
   transform: scaleX(-1); /* Mirror */
 }
 
+/* Hand landmark skeleton overlay */
+.hand-landmark-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: scaleX(-1); /* Mirror to match .camera-fill */
+  pointer-events: none;
+  z-index: 1; /* Above camera, below gradient overlay */
+}
+
 /* HUD pill */
 .hud-pill {
   background: var(--dark-overlay);

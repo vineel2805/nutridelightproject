@@ -128,7 +128,13 @@ class GestureRecognizerService {
           confidence: h.score,
         })) ?? [];
 
-      return { gestures: [], landmarks, handedness };
+      const gestures =
+        result.gestures?.[0]?.map((g) => ({
+          label: g.categoryName,
+          confidence: g.score,
+        })) ?? [];
+
+      return { gestures, landmarks, handedness };
     } catch (err) {
       console.error('[GestureRecognizerService] Recognition error:', err);
       return null;

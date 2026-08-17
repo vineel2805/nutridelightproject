@@ -8,9 +8,10 @@ import {
   classifyNormalizedHand,
   normalizeHandLandmarks,
 } from './rpsGeometry';
+import { drawHandSkeleton } from './handSkeleton';
 import { GESTURE_CONFIG } from './gestureConfig';
 import type { GestureStatus } from './gestureTypes';
-import type { GamePhase } from '../game/gameTypes';
+import type { GamePhase, RpsMove } from '../game/gameTypes';
 
 // ============================================================
 // useGestureDetection hook
@@ -24,10 +25,19 @@ const ACTIVE_PHASES: GamePhase[] = [
   'capture',
 ];
 
+/** Direct label-to-move mapping for the MediaPipe primary path.
+ *  Bypasses mapGestureToMove to avoid the double-threshold conflict. */
+const MEDIAPIPE_LABEL_TO_MOVE: Record<string, RpsMove> = {
+  Closed_Fist: 'rock',
+  Open_Palm: 'paper',
+  Victory: 'scissors',
+};
+
 interface UseGestureDetectionOptions {
   videoRef: React.RefObject<HTMLVideoElement | null>;
   phase: GamePhase;
-  onStableGesture?: (move: import('../game/gameTypes').RpsMove) => void;
+  onStableGesture?: (move: RpsMove) => void;
+  landmarkCanvasRef?: React.RefObject<HTMLCanvasElement | null>;
 }
 
 export interface GestureDebugInfo {
@@ -44,12 +54,16 @@ export interface GestureDebugInfo {
   serviceStatus: string;
   rejectionReason: string | null;
   blockReason: string | null;
+  mediapipeLabel: string | null;
+  mediapipeConfidence: number;
+  classificationSource: 'mediapipe' | 'geometry' | null;
 }
 
 export function useGestureDetection({
   videoRef,
   phase,
   onStableGesture,
+  landmarkCanvasRef,
 }: UseGestureDetectionOptions) {
   const [gestureStatus, setGestureStatus] = useState<GestureStatus>({
     kind: 'none',
@@ -174,6 +188,14 @@ export function useGestureDetection({
         motionTrackerRef.current.reset();
         const newStatus: GestureStatus = { kind: 'noHand' };
         emitGestureStatus(newStatus);
+
+        // Clear skeleton overlay
+        const canvas = landmarkCanvasRef?.current;
+        if (canvas) {
+          const ctx = canvas.getContext('2d');
+          if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
         if (import.meta.env.DEV) {
           setDebugInfo({
             label: 'None',
@@ -189,6 +211,9 @@ export function useGestureDetection({
             serviceStatus: gestureService.getStatus(),
             rejectionReason: 'no_hand',
             blockReason: 'no_hand',
+            mediapipeLabel: null,
+            mediapipeConfidence: 0,
+            classificationSource: null,
           });
         }
         return;
@@ -228,59 +253,119 @@ export function useGestureDetection({
             serviceStatus: gestureService.getStatus(),
             rejectionReason: 'low_landmark_quality',
             blockReason: 'low_landmark_quality',
+            mediapipeLabel: result.gestures[0]?.label ?? null,
+            mediapipeConfidence: result.gestures[0]?.confidence ?? 0,
+            classificationSource: null,
           });
         }
 
         return;
       }
 
-      const classification = classifyNormalizedHand(normalized);
+      // ── Primary: MediaPipe built-in gesture classifier ──
+      const topGesture = result.gestures[0];
+      let mediapipeMove: RpsMove | null = null;
+      let mediapipeConfidence = 0;
+      let mediapipeMargin = 0;
 
+      if (
+        topGesture &&
+        topGesture.confidence >= GESTURE_CONFIG.MEDIAPIPE_MIN_CONFIDENCE &&
+        MEDIAPIPE_LABEL_TO_MOVE[topGesture.label]
+      ) {
+        mediapipeMove = MEDIAPIPE_LABEL_TO_MOVE[topGesture.label];
+        mediapipeConfidence = topGesture.confidence;
+        // Margin: gap between top and second-best gesture candidate
+        const secondGesture = result.gestures[1];
+        mediapipeMargin = secondGesture
+          ? topGesture.confidence - secondGesture.confidence
+          : topGesture.confidence; // only one candidate → max margin
+      }
+
+      // ── Classification selection: MediaPipe primary, geometry fallback ──
+      let activeMove: RpsMove | null;
+      let activeConfidence: number;
+      let activeMargin: number;
+      let classificationSource: 'mediapipe' | 'geometry';
+      let rejectionReason: string | null = null;
+
+      if (mediapipeMove) {
+        // MediaPipe primary — skip geometry entirely
+        activeMove = mediapipeMove;
+        activeConfidence = mediapipeConfidence;
+        activeMargin = mediapipeMargin;
+        classificationSource = 'mediapipe';
+      } else {
+        // FALLBACK: geometry classifier — remove when MediaPipe is proven sufficient
+        const geoResult = classifyNormalizedHand(normalized);
+        activeMove = geoResult.move;
+        activeConfidence = geoResult.confidence;
+        activeMargin = geoResult.margin;
+        classificationSource = 'geometry';
+        rejectionReason = geoResult.rejectionReason;
+      }
+
+      // ── Fast-lock path (source-aware) ──
       if (
         phase === 'capture' &&
         motionState.canFastLock &&
-        classification.move &&
-        classification.confidence >= GESTURE_CONFIG.CAPTURE_FAST_CONFIDENCE
-        && classification.margin >= GESTURE_CONFIG.CLASSIFIER_MIN_MARGIN
-        && classification.features.quality >= GESTURE_CONFIG.LANDMARK_QUALITY_THRESHOLD
+        activeMove
       ) {
-        stableBufferRef.current.reset();
-        const fastStatus: GestureStatus = {
-          kind: 'stable',
-          move: classification.move,
-          confidence: classification.confidence,
-        };
+        const fastLockOk = classificationSource === 'mediapipe'
+          // MediaPipe path: confidence + margin only (no geometry quality concept)
+          ? activeConfidence >= GESTURE_CONFIG.CAPTURE_FAST_CONFIDENCE
+            && activeMargin >= GESTURE_CONFIG.CLASSIFIER_MIN_MARGIN
+          // Geometry path: original full check including landmark quality
+          : activeConfidence >= GESTURE_CONFIG.CAPTURE_FAST_CONFIDENCE
+            && activeMargin >= GESTURE_CONFIG.CLASSIFIER_MIN_MARGIN
+            && normalized.quality >= GESTURE_CONFIG.LANDMARK_QUALITY_THRESHOLD;
 
-        emitGestureStatus(fastStatus);
-        onStableRef.current?.(classification.move);
+        if (fastLockOk) {
+          stableBufferRef.current.reset();
+          const fastStatus: GestureStatus = {
+            kind: 'stable',
+            move: activeMove,
+            confidence: activeConfidence,
+          };
 
-        if (import.meta.env.DEV) {
-          setDebugInfo({
-            label: classification.move,
-            confidence: classification.confidence,
-            margin: classification.margin,
-            voteRatio: 1,
-            weightedMargin: 1,
-            consecutiveCount: 1,
-            motion: motionState.motion,
-            globalMotion: motionState.globalMotion,
-            poseMotion: motionState.poseMotion,
-            status: fastStatus,
-            serviceStatus: gestureService.getStatus(),
-            rejectionReason: classification.rejectionReason,
-            blockReason: null,
-          });
+          emitGestureStatus(fastStatus);
+          onStableRef.current?.(activeMove);
+
+          // Draw skeleton in brand green (stable)
+          this_drawSkeleton(video, '#4db868');
+
+          if (import.meta.env.DEV) {
+            setDebugInfo({
+              label: activeMove,
+              confidence: activeConfidence,
+              margin: activeMargin,
+              voteRatio: 1,
+              weightedMargin: 1,
+              consecutiveCount: 1,
+              motion: motionState.motion,
+              globalMotion: motionState.globalMotion,
+              poseMotion: motionState.poseMotion,
+              status: fastStatus,
+              serviceStatus: gestureService.getStatus(),
+              rejectionReason,
+              blockReason: null,
+              mediapipeLabel: topGesture?.label ?? null,
+              mediapipeConfidence: topGesture?.confidence ?? 0,
+              classificationSource,
+            });
+          }
+
+          return;
         }
-
-        return;
       }
 
+      // ── Feed into temporal consensus buffer ──
       if (motionState.moving) {
         stableBufferRef.current.push(null);
-      } else if (classification.move) {
+      } else if (activeMove) {
         stableBufferRef.current.push({
-          move: classification.move,
-          confidence: classification.confidence,
+          move: activeMove,
+          confidence: activeConfidence,
         });
       } else {
         stableBufferRef.current.push(null);
@@ -301,22 +386,26 @@ export function useGestureDetection({
       } else {
         newStatus = {
           kind: 'detecting',
-          move: classification.move,
-          confidence: classification.confidence,
+          move: activeMove,
+          confidence: activeConfidence,
         };
       }
 
       emitGestureStatus(newStatus);
 
+      // ── Draw hand skeleton overlay (imperative, no React state) ──
+      const isStable = newStatus.kind === 'stable';
+      this_drawSkeleton(video, isStable ? '#4db868' : 'rgba(255, 255, 255, 0.7)');
+
       const blockReason = motionState.moving
         ? 'moving'
-        : classification.rejectionReason ?? null;
+        : rejectionReason ?? null;
 
       if (import.meta.env.DEV) {
         setDebugInfo({
-          label: classification.move ?? 'Unknown',
-          confidence: classification.confidence,
-          margin: classification.margin,
+          label: activeMove ?? 'Unknown',
+          confidence: activeConfidence,
+          margin: activeMargin,
           voteRatio: consensus.weightedScore,
           weightedMargin: consensus.weightedMargin,
           consecutiveCount: consensus.consecutiveCount,
@@ -325,12 +414,39 @@ export function useGestureDetection({
           poseMotion: motionState.poseMotion,
           status: newStatus,
           serviceStatus: gestureService.getStatus(),
-          rejectionReason: classification.rejectionReason,
+          rejectionReason,
           blockReason,
+          mediapipeLabel: topGesture?.label ?? null,
+          mediapipeConfidence: topGesture?.confidence ?? 0,
+          classificationSource,
         });
       }
+
+      // ── Helper: draw skeleton to landmark canvas ──
+      function this_drawSkeleton(vid: HTMLVideoElement, color: string) {
+        const canvas = landmarkCanvasRef?.current;
+        if (!canvas || !result.landmarks[0]) return;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        const rect = canvas.getBoundingClientRect();
+        if (canvas.width !== rect.width || canvas.height !== rect.height) {
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+        }
+
+        drawHandSkeleton(
+          ctx,
+          result.landmarks[0],
+          vid.videoWidth || rect.width,
+          vid.videoHeight || rect.height,
+          rect.width,
+          rect.height,
+          color,
+        );
+      }
     },
-    [emitGestureStatus, videoRef]
+    [emitGestureStatus, videoRef, landmarkCanvasRef]
   );
 
   // Main inference loop — prefers requestVideoFrameCallback, falls back to rAF
@@ -354,6 +470,14 @@ export function useGestureDetection({
         stableBufferRef.current.reset();
         motionTrackerRef.current.reset();
       }
+
+      // Clear skeleton when inference stops
+      const canvas = landmarkCanvasRef?.current;
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+
       return;
     }
 
@@ -393,7 +517,7 @@ export function useGestureDetection({
         }
       };
     }
-  }, [emitGestureStatus, pageVisible, phase, processFrame, serviceReady, videoRef]);
+  }, [emitGestureStatus, landmarkCanvasRef, pageVisible, phase, processFrame, serviceReady, videoRef]);
 
   return { gestureStatus, debugInfo, serviceReady };
 }
